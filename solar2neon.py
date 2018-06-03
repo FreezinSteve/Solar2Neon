@@ -33,19 +33,20 @@ class ImportData:
         self.Data = []
 
 
-def get_solar_status(port, baud, timeout):
+def get_solar_status(port, baud):
     response = ''
+
     try:
+
         ser = serial.Serial(
             port=port,
             baudrate=baud,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
             bytesize=serial.EIGHTBITS,
-            timeout=timeout
+            timeout=30
         )
-        retries = int(settings['serial_retries'])
-
+        retries = 3
         if not ser.is_open:
             ser.open()
         sleep(1)
@@ -180,7 +181,7 @@ def get_node_list(url, user, pw):
         file.write(r.text)
 
 
-solar_data = get_solar_status(settings['serial_port'], settings['serial_baud'], int(settings['serial_timeout']))
+solar_data = get_solar_status(settings['serial_port'], settings['serial_baud'])
 if solar_data != '':
     date_time = datetime.datetime.utcnow().replace(second=0).replace(microsecond=0).isoformat()
     data = convert_solar_data(solar_data, date_time)

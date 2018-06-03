@@ -5,16 +5,10 @@ import datetime
 import os
 import time
 from time import sleep
+import json
 
-base_url = 'http://restservice-neon.niwa.co.nz/NeonRESTService.svc'
-nrt_id = '4063'
-user_name = 'xxxxxx'
-password = 'xxxxxxx'
-debug_file = 'nodes.json'
-serial_port = "/dev/ttyAMA0"
-baud_rate = '115200'
-serial_timeout = 30
-retries = 3
+with open('config.json') as json_file:
+    settings = json.load(json_file)
 
 # =====================================================
 # Class definitions for data to import to Neon
@@ -22,8 +16,8 @@ retries = 3
 
 
 class DataItem:
-    def __init__(self, date_time, value):
-        self.Time = date_time
+    def __init__(self, time_stamp, value):
+        self.Time = time_stamp
         self.Value = value
 
 
@@ -39,32 +33,33 @@ class ImportData:
         self.Data = []
 
 
-def get_solar_status():
+def get_solar_status(port, baud, timeout):
     response = ''
     try:
         ser = serial.Serial(
-            port=serial_port,
-            baudrate=baud_rate,
+            port=port,
+            baudrate=baud,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
             bytesize=serial.EIGHTBITS,
-            timeout=serial_timeout
-            )
+            timeout=timeout
+        )
+        retries = int(settings['serial_retries'])
 
         if not ser.is_open:
             ser.open()
         sleep(1)
-        read('$$$','CMD',2,ser)
+        read('$$$', 'CMD', 2, retries, ser)
         sleep(1)
         # read('I\r','Done',20,ser)
         # sleep(1)
-        read('C,201512083167\r','CONNECT',20,ser)
+        read('C,201512083167\r', 'CONNECT', 20, retries, ser)
         sleep(2)
-        response = read('R','\n',5,ser)
+        response = read('R', '\n', 5, retries, ser)
         sleep(1)
-        read('$$$','',2,ser)
+        read('$$$', '', 2, retries, ser)
         sleep(1)
-        read('K,1\r','',2,ser)
+        read('K,1\r', '', 2, retries, ser)
         sleep(1)
         ser.close()
         return response
@@ -74,45 +69,48 @@ def get_solar_status():
         return response
 
 
-def read(cmd,term,timeout,ser):
-    for x in range(0,retries):
+def read(cmd, term, timeout, retries, ser):
+    buff = ''
+    for x in range(0, retries):
         print('S:' + cmd)
         ser.reset_input_buffer()
         ser.write(cmd)
         ser.flush()
         buff = ''
-        end_time=time.time()+timeout
-        while(True):
-            if ser.inWaiting()>0:
-                data = ser.read(ser.inWaiting()).decode('ascii')
-                print(data),
-                buff=buff+data
+        end_time = time.time() + timeout
+        while True:
+            if ser.inWaiting() > 0:
+                d = ser.read(ser.inWaiting()).decode('ascii')
+                print(d),
+                buff = buff + d
                 if term != '':
-                    if buff.find(term)>=0:
+                    if buff.find(term) >= 0:
                         return buff
-            elif time.time()>end_time:
+            elif time.time() > end_time:
                 break
     return buff
+
 
 # =====================================================
 # Send the ImportData class to the Neon REST service
 # =====================================================
 
 
-def send_to_neon(data):
-    session_url = base_url + '/PostSession'
+def send_to_neon(url, user, pw, nrt_id, neon_data):
+    session_url = url + '/PostSession'
 
-    cred = {'Username': user_name, 'Password': password}
+    cred = {'Username': user, 'Password': pw}
     r = requests.post(url=session_url, json=cred)
 
     # extract session token in json format
     session = r.json()
     hdr = {'X-Authentication-Token': session['Token'], 'Content-Type': 'application/json'}
 
-    payload = jsonpickle.pickler.encode(data)
-    data_url =  base_url + '/ImportData/' + nrt_id + '?LoggerType=1'
+    payload = jsonpickle.pickler.encode(neon_data)
+    data_url = url + '/ImportData/' + nrt_id + '?LoggerType=1'
 
-    r = requests.post(data_url, data=payload, headers=hdr)
+    requests.post(data_url, data=payload, headers=hdr)
+
 
 # =====================================================
 # Convert the raw message from the Arduino to
@@ -120,72 +118,72 @@ def send_to_neon(data):
 # =====================================================
 
 
-def convert_solar_data(data, date_time):
+def convert_solar_data(raw_data, time_stamp):
     d = {}
-    items = data.split(',')
+    items = raw_data.split(',')
     for item in items:
         print('New value = ' + item)
-        if item.find('=')>=0:
+        if item.find('=') >= 0:
             val = item.split('=')
             d[val[0]] = val[1]
 
     neon_data = ImportData()
 
     s = Sensor("0", "0")
-    s.Samples.append(DataItem(date_time, d["PA"]))
+    s.Samples.append(DataItem(time_stamp, d["PA"]))
     neon_data.Data.append(s)
 
     s = Sensor("1", "0")
-    s.Samples.append(DataItem(date_time, d["HI"]))
+    s.Samples.append(DataItem(time_stamp, d["HI"]))
     neon_data.Data.append(s)
 
     s = Sensor("2", "0")
-    s.Samples.append(DataItem(date_time, d["CO"]))
+    s.Samples.append(DataItem(time_stamp, d["CO"]))
     neon_data.Data.append(s)
 
     s = Sensor("3", "0")
-    s.Samples.append(DataItem(date_time, d["WB"]))
+    s.Samples.append(DataItem(time_stamp, d["WB"]))
     neon_data.Data.append(s)
 
     s = Sensor("4", "0")
-    s.Samples.append(DataItem(date_time, d["MC"]))
+    s.Samples.append(DataItem(time_stamp, d["MC"]))
     neon_data.Data.append(s)
 
     s = Sensor("5", "0")
-    s.Samples.append(DataItem(date_time, d["SC"]))
+    s.Samples.append(DataItem(time_stamp, d["SC"]))
     neon_data.Data.append(s)
 
     s = Sensor("6", "0")
-    s.Samples.append(DataItem(date_time, d["HA"]))
+    s.Samples.append(DataItem(time_stamp, d["HA"]))
     neon_data.Data.append(s)
 
     return neon_data
 
 
-def get_node_list():
-    session_url = base_url + '/PostSession'
-    cred = {'Username': user_name, 'Password': password}
+def get_node_list(url, user, pw):
+    session_url = url + '/PostSession'
+    cred = {'Username': user, 'Password': pw}
     r = requests.post(url=session_url, json=cred)
 
     # extract session token in json format
     session = r.json()
     hdr = {'X-Authentication-Token': session['Token'], 'Content-Type': 'application/json'}
 
-    data_url = base_url + '/GetNodeList'
+    data_url = url + '/GetNodeList'
 
     r = requests.get(data_url, headers=hdr)
 
-    if os.path.isfile(debug_file):
-        os.remove(debug_file)
+    if os.path.isfile('nodes.json'):
+        os.remove('nodes.json')
 
-    with open(debug_file, 'w', encoding="utf-8") as file:
+    with open('nodes.json', 'w', encoding="utf-8") as file:
         file.write(r.text)
 
 
-solarData = get_solar_status()
-if solarData != '':
-    dateTime = datetime.datetime.utcnow().replace(second=0).replace(microsecond=0).isoformat()
-    neonData = convert_solar_data(solarData, dateTime)
-    send_to_neon(neonData)
+solar_data = get_solar_status(settings['serial_port'], settings['serial_baud'], int(settings['serial_timeout']))
+if solar_data != '':
+    date_time = datetime.datetime.utcnow().replace(second=0).replace(microsecond=0).isoformat()
+    data = convert_solar_data(solar_data, date_time)
+    send_to_neon(settings['url'], settings['user'], settings['password'], settings['nrt_id'], data)
 else:
     print('NO SOLAR DATA!')

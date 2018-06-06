@@ -155,7 +155,9 @@ def convert_solar_data(raw_data, time_stamp):
     neon_data.Data.append(s)
 
     s = Sensor("6", "0")
-    s.Samples.append(DataItem(time_stamp, d["HA"]))
+    # Scale to KWh. First guess
+    heat = float(d["HA"]) * 0.000177
+    s.Samples.append(DataItem(time_stamp, str(heat)))
     neon_data.Data.append(s)
 
     return neon_data

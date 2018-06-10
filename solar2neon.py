@@ -3,11 +3,12 @@ import requests
 import jsonpickle
 import datetime
 import os
+import sys
 import time
 from time import sleep
 import json
 
-with open('config.json') as json_file:
+with open(os.path.join(sys.path[0],'config.json'),'r') as json_file:
     settings = json.load(json_file)
 
 # =====================================================

@@ -160,6 +160,10 @@ def convert_solar_data(raw_data, time_stamp):
     s.Samples.append(DataItem(time_stamp, str(heat)))
     neon_data.Data.append(s)
 
+    s = Sensor("7", "0")
+    s.Samples.append(DataItem(time_stamp, d["RL"]))
+    neon_data.Data.append(s)
+
     return neon_data
 
 
